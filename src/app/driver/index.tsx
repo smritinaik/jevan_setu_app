@@ -1,12 +1,27 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import * as Location from 'expo-location';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
-import { useAuth } from '../../../context/AuthContext';
-import { supabase, Junction } from '../../../lib/supabase';
-import RippleButton from '../../../components/RippleButton';
 import LiveMap, { MapItem } from '../../../components/LiveMap';
+import RippleButton from '../../../components/RippleButton';
+import { useAuth } from '../../../context/AuthContext';
+import { Junction, supabase } from '../../../lib/supabase';
 import { C } from '../../../lib/theme';
+
+// ⬇️ PUT YOUR ESP32 IP HERE (from the Serial Monitor)
+const ESP_URL = 'http://10.155.86.187';
+
+async function triggerSiren() {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 3000);
+  try {
+    await fetch(`${ESP_URL}/siren`, { signal: ctrl.signal });
+  } catch (e) {
+    console.log('ESP32 not reachable', e);
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 type Phase = 'idle' | 'select' | 'active';
 
@@ -44,6 +59,7 @@ export default function Driver() {
 
   async function startEmergency() {
     if (!destination.trim()) return Alert.alert('Enter the destination hospital');
+    triggerSiren(); // ⬅️ buzzer + LED for 5 s, no matter what (not awaited)
     setBusy(true);
     try {
       const p = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
@@ -60,7 +76,6 @@ export default function Driver() {
       }).select().single();
       if (error) throw error;
 
-      // PROTOTYPE: the siren fires even if no junction is selected
       const commands: { trip_id: string; junction_id: string | null }[] = selected.length
         ? selected.map((j) => ({ trip_id: trip.id, junction_id: j }))
         : [{ trip_id: trip.id, junction_id: null }];
