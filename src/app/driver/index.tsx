@@ -7,23 +7,38 @@ import RippleButton from '../../../components/RippleButton';
 import { useAuth } from '../../../context/AuthContext';
 import { Junction, supabase } from '../../../lib/supabase';
 import { C } from '../../../lib/theme';
+import AmbulanceRoad, { LogoMark } from '../../../components/AmbulanceRoad';
 
-// ⬇️ PUT YOUR ESP32 IP HERE (from the Serial Monitor)
-const ESP_URL = 'http://10.155.86.187';
+const DEVICE_NAME = 'siren1'; // must match DEVICE_NAME in the ESP32 code
 
-async function triggerSiren() {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 3000);
+// Finds the ESP32's current IP in Supabase, then asks it to run the siren for 5 s
+async function triggerSiren(): Promise<boolean> {
   try {
-    await fetch(`${ESP_URL}/siren`, { signal: ctrl.signal });
+    const { data } = await supabase
+      .from('devices')
+      .select('ip')
+      .eq('name', DEVICE_NAME)
+      .maybeSingle();
+    if (!data?.ip) {
+      console.log('ESP32 IP not found in devices table');
+      return false;
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3000);
+    try {
+      const res = await fetch(`http://${data.ip}/siren`, { signal: ctrl.signal });
+      return res.ok;
+    } finally {
+      clearTimeout(t);
+    }
   } catch (e) {
     console.log('ESP32 not reachable', e);
-  } finally {
-    clearTimeout(t);
+    return false;
   }
 }
 
 type Phase = 'idle' | 'select' | 'active';
+type SirenStatus = 'pending' | 'ok' | 'fail';
 
 export default function Driver() {
   const { profile, signOut } = useAuth();
@@ -34,6 +49,7 @@ export default function Driver() {
   const [tripId, setTripId] = useState<string | null>(null);
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sirenStatus, setSirenStatus] = useState<SirenStatus>('pending');
   const watcher = useRef<Location.LocationSubscription | null>(null);
   const lastPush = useRef(0);
 
@@ -59,11 +75,23 @@ export default function Driver() {
 
   async function startEmergency() {
     if (!destination.trim()) return Alert.alert('Enter the destination hospital');
-    triggerSiren(); // ⬅️ buzzer + LED for 5 s, no matter what (not awaited)
+
+    // buzzer + LED for 5 s, no matter what (runs in the background)
+    setSirenStatus('pending');
+    triggerSiren().then((ok) => setSirenStatus(ok ? 'ok' : 'fail'));
+
     setBusy(true);
     try {
-      const p = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const lat = p.coords.latitude, lng = p.coords.longitude;
+      let lat: number, lng: number;
+      try {
+        const p = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        lat = p.coords.latitude;
+        lng = p.coords.longitude;
+      } catch {
+        if (!pos) throw new Error('Could not get your location. Turn on GPS or go outside.');
+        lat = pos.lat;
+        lng = pos.lng;
+      }
       setPos({ lat, lng });
 
       const { data: trip, error } = await supabase.from('trips').insert({
@@ -111,6 +139,7 @@ export default function Driver() {
     setTripId(null);
     setDestination('');
     setSelected([]);
+    setSirenStatus('pending');
     setPhase('idle');
   }
 
@@ -128,8 +157,14 @@ export default function Driver() {
     return items;
   }, [junctions, selected, pos, phase]);
 
+  const sirenText =
+    sirenStatus === 'ok' ? 'Siren module: triggered ✅'
+    : sirenStatus === 'fail' ? 'Siren module: not reachable ⚠️'
+    : 'Siren module: contacting…';
+
   return (
     <SafeAreaView style={s.safe}>
+                  <AmbulanceRoad />
       <View style={s.header}>
         <View>
           <Text style={s.hi}>Driver</Text>
@@ -145,7 +180,7 @@ export default function Driver() {
       )}
 
       {phase === 'select' && (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
           <Text style={s.title}>Junctions with sirens</Text>
           <Text style={s.hint}>Select the ones on your route</Text>
           <LiveMap items={mapItems} height={220} />
@@ -172,6 +207,7 @@ export default function Driver() {
             <Text style={s.bannerTitle}>🚨 EMERGENCY ACTIVE</Text>
             <Text style={s.bannerSub}>To: {destination}</Text>
             <Text style={s.bannerSub}>Sirens triggered at {selected.length || 'default'} junction(s)</Text>
+            <Text style={s.bannerSub}>{sirenText}</Text>
           </View>
           <LiveMap items={mapItems} height={360} />
           <Pressable style={s.end} onPress={endTrip}>

@@ -13,7 +13,7 @@
     "android": {
       "package": "com.smritinaik.jevansetu",
       "adaptiveIcon": {
-        "backgroundColor": "#7A0F22",
+        "backgroundColor": "#FFE5D0",
         "foregroundImage": "./assets/icon.png"
       },
       "predictiveBackGestureEnabled": false
@@ -26,7 +26,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#7A0F22",
+          "backgroundColor": "#FFE5D0",
           "image": "./assets/icon.png",
           "imageWidth": 76
         }
@@ -36,7 +36,16 @@
         {
           "locationWhenInUsePermission": "JeevanSetu shares the ambulance location with traffic police during an emergency."
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,

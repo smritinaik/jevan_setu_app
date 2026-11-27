@@ -6,6 +6,8 @@ import { supabase, Junction, Trip } from '../../../lib/supabase';
 import LiveMap, { MapItem } from '../../../components/LiveMap';
 import { distanceKm, etaMinutes } from '../../../lib/geo';
 import { C } from '../../../lib/theme';
+import AmbulanceRoad, { LogoMark } from '../../../components/AmbulanceRoad';
+
 
 /* Green pulsing ripple button (UI only) */
 function GreenRipple({ size = 170, onPress }: { size?: number; onPress: () => void }) {
@@ -144,6 +146,7 @@ export default function Police() {
 
   return (
     <SafeAreaView style={s.safe}>
+            <AmbulanceRoad />
       <View style={s.header}>
         <View style={s.headerLeft}>
           <View style={s.avatar}><Text style={s.avatarText}>{initial}</Text></View>
